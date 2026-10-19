@@ -7,11 +7,15 @@ import { CheckCircle } from 'lucide-react';
 import KwargsFormList from './KwargsFormList.tsx';
 import PageTitleSpan from '@/components/spans/PageTitleSpan.tsx';
 
-import { FridayConfig } from '@shared/config/friday.ts';
+import {
+    DEFAULT_FRIDAY_RUNTIME,
+    FridayConfig,
+    FridayRuntime,
+} from '@shared/config/friday-common.ts';
 import { useMessageApi } from '@/context/MessageApiContext.tsx';
 import { RouterPath } from '@/pages/RouterPath.ts';
 import { useFridaySettingRoom } from '@/context/FridaySettingRoomContext.tsx';
-import { llmProviderOptions } from '../config';
+import { fridayRuntimeOptions, llmProviderOptions } from '../config';
 
 // Form format for kwargs
 interface KwargsFormItem {
@@ -101,7 +105,7 @@ const SettingPage = () => {
     };
     const {
         loadingConfig,
-        verifyPythonEnv,
+        verifyRuntimeEnv,
         fridayConfig,
         saveFridayConfig,
         installFridayRequirements,
@@ -148,6 +152,11 @@ const SettingPage = () => {
         return !llmProvider || !llmProvider.startsWith('ollama');
     }, [llmProvider]);
 
+    const runtime: FridayRuntime =
+        (Form.useWatch('runtime', form) as FridayRuntime) ??
+        DEFAULT_FRIDAY_RUNTIME;
+    const isJavaRuntime = runtime === 'java';
+
     return (
         <div className="flex flex-col w-full h-full pl-12 pr-12 pt-8 pb-8 gap-13">
             <div className="flex flex-col w-full gap-2">
@@ -164,6 +173,7 @@ const SettingPage = () => {
                     form={form}
                     initialValues={{
                         writePermission: false,
+                        runtime: DEFAULT_FRIDAY_RUNTIME,
                     }}
                     onFinish={async (config: FridayConfigForm) => {
                         // Convert form format to backend format
@@ -178,11 +188,17 @@ const SettingPage = () => {
                         };
                         setLoading(true);
                         setBtnText(
-                            t('message.friday.info-install-requirements'),
+                            config.runtime === 'java'
+                                ? t('message.friday.info-check-runtime')
+                                : t('message.friday.info-install-requirements'),
                         );
                         setBtnIcon(null);
                         const installFridayRequirementsRes =
-                            await installFridayRequirements(config.pythonEnv);
+                            await installFridayRequirements({
+                                runtime:
+                                    config.runtime ?? DEFAULT_FRIDAY_RUNTIME,
+                                pythonEnv: config.pythonEnv,
+                            });
                         if (installFridayRequirementsRes.success) {
                             setBtnIcon(
                                 <CheckCircle
@@ -242,26 +258,86 @@ const SettingPage = () => {
                     {...formItemLayout}
                 >
                     <Form.Item
-                        name="pythonEnv"
-                        label="Python Environment"
-                        hasFeedback={true}
-                        rules={[
-                            {
-                                required: true,
-                                message: 'Input the Python env',
-                            },
-                            {
-                                validator: async (_, value) => {
-                                    if (!value) return;
-                                    const result = await verifyPythonEnv(value);
-                                    if (!result.success) {
-                                        throw new Error(result.message);
-                                    }
-                                },
-                            },
-                        ]}
+                        name="runtime"
+                        label="Runtime"
+                        required
+                        help={t('help.friday.runtime')}
                     >
-                        <Input placeholder={t('help.friday.python-env')} />
+                        <Select options={fridayRuntimeOptions} />
+                    </Form.Item>
+
+                    {isJavaRuntime ? (
+                        <Form.Item
+                            name="javaEnv"
+                            label="Java Environment"
+                            hasFeedback={true}
+                            preserve={false}
+                            rules={[
+                                {
+                                    required: true,
+                                    message: 'Input the Java env',
+                                },
+                                {
+                                    validator: async (_, value) => {
+                                        if (!value) return;
+                                        const result = await verifyRuntimeEnv(
+                                            'java',
+                                            value,
+                                        );
+                                        if (!result.success) {
+                                            throw new Error(result.message);
+                                        }
+                                    },
+                                },
+                            ]}
+                        >
+                            <Input placeholder={t('help.friday.java-env')} />
+                        </Form.Item>
+                    ) : (
+                        <Form.Item
+                            name="pythonEnv"
+                            label="Python Environment"
+                            hasFeedback={true}
+                            preserve={false}
+                            rules={[
+                                {
+                                    required: true,
+                                    message: 'Input the Python env',
+                                },
+                                {
+                                    validator: async (_, value) => {
+                                        if (!value) return;
+                                        const result = await verifyRuntimeEnv(
+                                            'python',
+                                            value,
+                                        );
+                                        if (!result.success) {
+                                            throw new Error(result.message);
+                                        }
+                                    },
+                                },
+                            ]}
+                        >
+                            <Input placeholder={t('help.friday.python-env')} />
+                        </Form.Item>
+                    )}
+
+                    <Form.Item
+                        name="mainScriptPath"
+                        label={
+                            isJavaRuntime
+                                ? 'Friday Jar Path'
+                                : 'Main Script Path'
+                        }
+                        help={t('help.friday.main-script-path')}
+                    >
+                        <Input
+                            placeholder={
+                                isJavaRuntime
+                                    ? '/path/to/friday.jar'
+                                    : '/path/to/main.py'
+                            }
+                        />
                     </Form.Item>
 
                     <Form.Item name="llmProvider" label="LLM Provider" required>

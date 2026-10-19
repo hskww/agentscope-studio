@@ -23,8 +23,10 @@ import dayjs from 'dayjs';
 import * as fs from 'node:fs';
 import { ConfigManager, PATHS } from '../../../shared/src';
 import {
+    DEFAULT_FRIDAY_RUNTIME,
     FridayConfig,
     FridayConfigManager,
+    FridayRuntime,
 } from '../../../shared/src/config/friday';
 import { SpanData } from '../../../shared/src/types/trace';
 import { FridayAppMessageDao } from '../dao/FridayAppMessage';
@@ -340,15 +342,31 @@ export class SocketManager {
             socket.on(
                 SocketEvents.client.installFridayRequirements,
                 async (
-                    pythonEnv: string,
+                    payload: {
+                        runtime?: FridayRuntime;
+                        pythonEnv?: string;
+                    },
                     callback: (res: ResponseBody) => void,
                 ) => {
                     const fridayConfigManager =
                         FridayConfigManager.getInstance();
-                    const res =
-                        await fridayConfigManager.installRequirements(
-                            pythonEnv,
-                        );
+                    // Backward compatibility: the client used to send the
+                    // python env path directly.
+                    const legacyEnv =
+                        typeof payload === 'string' ? payload : undefined;
+                    const runtime: FridayRuntime =
+                        (typeof payload === 'object' && payload?.runtime) ||
+                        DEFAULT_FRIDAY_RUNTIME;
+                    const pythonEnv =
+                        legacyEnv ??
+                        (typeof payload === 'object'
+                            ? payload?.pythonEnv
+                            : '') ??
+                        '';
+                    const res = await fridayConfigManager.installRequirements(
+                        pythonEnv,
+                        runtime,
+                    );
                     callback(res);
                 },
             );
@@ -390,14 +408,28 @@ export class SocketManager {
             socket.on(
                 SocketEvents.client.verifyFridayConfig,
                 async (
-                    pythonEnv: string,
+                    payload: { runtime?: FridayRuntime; env?: string },
                     callback: (response: ResponseBody) => void,
                 ) => {
-                    console.debug(`${socket.id}: verifyPythonEnv:`, pythonEnv);
-                    // Verify if python exists
+                    // Backward compatibility: the client used to send the
+                    // python env path directly.
+                    const runtime: FridayRuntime =
+                        (typeof payload === 'object' && payload?.runtime) ||
+                        DEFAULT_FRIDAY_RUNTIME;
+                    const env =
+                        (typeof payload === 'string'
+                            ? payload
+                            : payload?.env) ?? '';
+                    console.debug(
+                        `${socket.id}: verifyFridayConfig:`,
+                        runtime,
+                        env,
+                    );
+                    // Verify the python interpreter or the java executable
                     const result =
-                        FridayConfigManager.getInstance().verifyPythonEnv(
-                            pythonEnv,
+                        FridayConfigManager.getInstance().verifyRuntimeEnv(
+                            runtime,
+                            env,
                         );
                     callback(result);
                 },
@@ -461,29 +493,50 @@ export class SocketManager {
                         return;
                     }
 
-                    // Prepare the arguments for the Python script
-                    const mainScriptPath = fridayConfig.mainScriptPath
-                        ? fridayConfig.mainScriptPath
-                        : fridayConfigManager.getDefaultMainScriptPath();
+                    // Prepare the arguments for the Friday script
+                    // (`python main.py ...` or `java -jar friday.jar ...`)
                     const args = [
-                        mainScriptPath,
                         '--query',
                         JSON.stringify(content),
                         '--studio_url',
                         `http://localhost:${config.port}`,
                     ];
-                    console.debug(fridayConfig);
+                    // Never dump the raw config: the stored file also carries the
+                    // LLM credentials (apiKey) in clear text.
+                    console.debug('Friday launch config:', {
+                        ...fridayConfig,
+                        apiKey: (fridayConfig as { apiKey?: string }).apiKey
+                            ? '***'
+                            : undefined,
+                    });
                     for (const [key, value] of Object.entries(fridayConfig)) {
-                        if (key !== 'pythonEnv' && key !== 'mainScriptPath') {
+                        if (
+                            key !== 'pythonEnv' &&
+                            key !== 'javaEnv' &&
+                            key !== 'mainScriptPath' &&
+                            key !== 'runtime'
+                        ) {
+                            if (value === null || value === undefined) {
+                                // Optional settings that are unset have no flag.
+                                continue;
+                            }
                             if (typeof value === 'object') {
                                 args.push(`--${key}`, JSON.stringify(value));
                             } else {
-                                args.push(`--${key}`, value);
+                                // spawn only accepts string args, and booleans or
+                                // numbers are rejected by newer Node versions.
+                                args.push(`--${key}`, String(value));
                             }
                         }
                     }
 
-                    runPythonScript(fridayConfig.pythonEnv, args)
+                    const { command, args: commandArgs } =
+                        fridayConfigManager.vb(
+                            fridayConfig,
+                            args,
+                        );
+
+                    runCommand(command, commandArgs)
                         .then((result) => {
                             if (result.success) {
                                 console.debug(
@@ -523,17 +576,27 @@ export class SocketManager {
             );
 
             socket.on(SocketEvents.client.cleanHistoryOfFridayApp, async () => {
-                FridayAppMessageDao.cleanHistoryMessages().then(() => {
-                    const filePath = PATHS.getFridayDialogHistoryPath();
-                    if (fs.existsSync(filePath)) {
-                        fs.unlinkSync(filePath);
-                        console.debug(`Deleted file: ${filePath}`);
-                    } else {
-                        console.warn(`File not found: ${filePath}`);
-                    }
-                    // TODO: 告知client
-                    this.broadcastReplyToFridayAppRoom(undefined, true);
-                });
+                try {
+                    await FridayAppMessageDao.cleanHistoryMessages();
+                } catch (error) {
+                    // Only log: this handler does not await the cleanup, so a
+                    // re-throw would become an unhandled rejection and take the
+                    // whole Studio process down.
+                    console.error(
+                        'Failed to clean the Friday app history:',
+                        error,
+                    );
+                    return;
+                }
+                const filePath = PATHS.getFridayDialogHistoryPath();
+                if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath);
+                    console.debug(`Deleted file: ${filePath}`);
+                } else {
+                    console.warn(`File not found: ${filePath}`);
+                }
+                // TODO: 告知client
+                this.broadcastReplyToFridayAppRoom(undefined, true);
             });
 
             socket.on('disconnect', () => {
@@ -741,13 +804,33 @@ interface PythonResult {
     error?: string;
 }
 
-export async function runPythonScript(
-    pythonEnv: string,
+/**
+ * Replace the values of the credential flags so that the launch command can be
+ * logged without leaking API keys.
+ */
+function redactSecretArgs(args: string[]): string[] {
+    const secretFlags = new Set(['--apiKey', '--api_key']);
+    return args.map((arg, index) =>
+        secretFlags.has(args[index - 1]) ? '***' : arg,
+    );
+}
+
+/**
+ * Run an arbitrary command and collect its output.
+ *
+ * Used to launch Friday, either `python <script>` or `java -jar <jar>`.
+ */
+export async function runCommand(
+    command: string,
     commands: string[],
 ): Promise<PythonResult> {
     return new Promise((resolve) => {
-        console.debug('The execute command:', pythonEnv, commands);
-        const pythonProcess = spawn(pythonEnv, commands, {
+        console.debug(
+            'The execute command:',
+            command,
+            redactSecretArgs(commands),
+        );
+        const pythonProcess = spawn(command, commands, {
             env: {
                 ...process.env,
                 FORCE_COLOR: '0',
@@ -777,9 +860,29 @@ export async function runPythonScript(
             } else {
                 resolve({
                     success: false,
-                    error: errorOutput.trim(),
+                    error: errorOutput.trim() || `Exited with code ${code}`,
                 });
             }
         });
+
+        // The command does not exist or cannot be spawned
+        pythonProcess.on('error', (error) => {
+            resolve({
+                success: false,
+                error: `Failed to execute "${command}": ${error.message}`,
+            });
+        });
     });
+}
+
+/**
+ * Run a python script with the given python environment.
+ *
+ * Kept as a thin wrapper over {@link runCommand}.
+ */
+export async function runPythonScript(
+    pythonEnv: string,
+    commands: string[],
+): Promise<PythonResult> {
+    return runCommand(pythonEnv, commands);
 }

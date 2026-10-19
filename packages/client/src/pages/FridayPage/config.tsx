@@ -5,6 +5,7 @@ import OpenAILogo from '@/assets/svgs/logo-openai.svg?react';
 import OllamaLogo from '@/assets/svgs/logo-ollama.svg?react';
 import GoogleLogo from '@/assets/svgs/logo-google.svg?react';
 import AnthropicLogo from '@/assets/svgs/logo-anthropic.svg?react';
+import DeepSeekLogo from '@/assets/svgs/logo-deepseek.svg?react';
 
 interface InputTypeOption {
     label: string;
@@ -87,6 +88,20 @@ export const llmProviderOptions: LlmProviderOption[] = [
         ),
         value: 'gemini',
     },
+    {
+        label: (
+            <ModelOption
+                logo={<DeepSeekLogo width={17} height={17} />}
+                name="DeepSeek"
+            />
+        ),
+        value: 'deepseek',
+    },
+];
+
+export const fridayRuntimeOptions: InputTypeOption[] = [
+    { label: 'Python (agentscope 1.x)', value: 'python' },
+    { label: 'Java (agentscope-java 2.0)', value: 'java' },
 ];
 
 export const booleanOptions: BooleanOption[] = [

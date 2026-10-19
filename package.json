@@ -28,6 +28,7 @@
         "build:client": "npm run build --workspace=packages/client",
         "build:server": "npm run build --workspace=packages/server",
         "build:python": "cp -r packages/app dist/app",
+        "build:java": "mvn -B -f packages/app/friday_java/pom.xml package && mkdir -p dist/app/friday_java && cp packages/app/friday_java/target/friday.jar dist/app/friday_java/friday.jar",
         "prepublishOnly": "npm run build",
         "format": "prettier --write . && eslint . --ext .js,.jsx,.ts,.tsx --fix",
         "docs:dev": "vitepress dev docs",

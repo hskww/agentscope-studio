@@ -129,6 +129,9 @@
             "llm-provider": "选择 LLM API 提供商",
             "model-name": "用于生成回复的{{llmProvider}}模型",
             "python-env": "Python 环境的绝对路径（3.10+），例如 /usr/bin/python",
+            "java-env": "Java 可执行文件的绝对路径（JDK 17+），例如 /usr/bin/java",
+            "runtime": "选择 Friday 的运行实现：Python 版（agentscope 1.x）或 Java 版（agentscope-java 2.0）",
+            "main-script-path": "Friday 入口文件路径，留空则使用默认路径。Java 运行时请填写 friday.jar 的路径",
             "write-permission": "是否允许 Friday 修改你的本地文件，如果允许，Friday 将会装备一个写文件的工具",
             "key-name": "Key 名称",
             "missing-key-name": "缺少 Key 名称",
@@ -171,6 +174,13 @@
             "update-success": "更新成功！已安装版本 {{version}}",
             "update-failed": "更新失败：{{error}}",
             "restart-required": "请重启应用以使用新版本"
+        },
+        "friday": {
+            "success-install-requirements": "依赖安装成功。",
+            "success-save-config": "配置保存成功。",
+            "info-install-requirements": "正在为 Friday 安装 Python 依赖，请稍候 ...",
+            "info-check-runtime": "正在校验 Friday 运行环境，请稍候 ...",
+            "info-save-config": "正在保存 Friday 配置，请稍候 ..."
         }
     },
     "notification": {

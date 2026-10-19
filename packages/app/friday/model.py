@@ -19,6 +19,16 @@ from agentscope.model import (
     AnthropicChatModel,
 )
 
+# DeepSeek is OpenAI-API compatible, so we reuse OpenAIChatModel with its
+# official base url. The dedicated formatter is optional (only available in
+# newer versions of agentscope), otherwise we fall back to the OpenAI one.
+DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+
+try:
+    from agentscope.formatter import DeepSeekChatFormatter
+except ImportError:  # pragma: no cover
+    DeepSeekChatFormatter = None
+
 
 def is_agentscope_version_ge(target_version: tuple) -> bool:
     """
@@ -56,6 +66,10 @@ def get_formatter(llmProvider: str) -> FormatterBase:
             return GeminiChatFormatter()
         case "anthropic":
             return AnthropicChatFormatter()
+        case "deepseek":
+            if DeepSeekChatFormatter is not None:
+                return DeepSeekChatFormatter()
+            return OpenAIChatFormatter()
         case _:
             raise ValueError(
                 f"Unsupported model provider: {llmProvider}. "
@@ -116,6 +130,18 @@ def get_model(
                 api_key=apiKey,
                 stream=True,
                 client_kwargs=client_kwargs,
+                generate_kwargs=generate_kwargs,
+            )
+        case "deepseek":
+            # DeepSeek provides an OpenAI-compatible API
+            return OpenAIChatModel(
+                model_name=modelName,
+                api_key=apiKey,
+                stream=True,
+                client_kwargs={
+                    "base_url": DEEPSEEK_BASE_URL,
+                    **(client_kwargs or {}),
+                },
                 generate_kwargs=generate_kwargs,
             )
         case _:

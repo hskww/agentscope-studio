@@ -241,40 +241,33 @@ const AsTextarea = ({
                 </InputGroupText>
                 <Separator orientation="vertical" className="!h-4" />
                 {expandable ? (
-                    <Tooltip>
-                        <TooltipTrigger>
-                            <AsTextareaDialog
-                                inputText={inputText}
-                                placeholder={placeholder}
-                                attachment={attachment}
-                                actionType={actionType}
-                                onActionClick={onActionClick}
-                                onAttachChange={handleAttachChange}
-                                onChange={handleChange}
-                                disableSendBtn={disableSendBtn}
-                                tooltips={tooltips}
-                                attachAccept={attachAccept}
-                                attachMaxFileSize={attachMaxFileSize}
-                                onError={onError}
-                            >
-                                <InputGroupButton
-                                    variant="ghost"
-                                    className="rounded-full"
-                                    size="icon-sm"
-                                    onClick={() => {}}
-                                >
-                                    <ExpandIcon />
-                                </InputGroupButton>
-                            </AsTextareaDialog>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                            {tooltips.expandTextarea}
-                        </TooltipContent>
-                    </Tooltip>
+                    <AsTextareaDialog
+                        inputText={inputText}
+                        placeholder={placeholder}
+                        attachment={attachment}
+                        actionType={actionType}
+                        onActionClick={onActionClick}
+                        onAttachChange={handleAttachChange}
+                        onChange={handleChange}
+                        disableSendBtn={disableSendBtn}
+                        tooltips={tooltips}
+                        attachAccept={attachAccept}
+                        attachMaxFileSize={attachMaxFileSize}
+                        onError={onError}
+                        tooltip={tooltips.expandTextarea}
+                    >
+                        <InputGroupButton
+                            variant="ghost"
+                            className="rounded-full"
+                            size="icon-sm"
+                        >
+                            <ExpandIcon />
+                        </InputGroupButton>
+                    </AsTextareaDialog>
                 ) : null}
                 {isSupported && (
                     <Tooltip>
-                        <TooltipTrigger>
+                        <TooltipTrigger asChild>
                             <VoiceButton
                                 isListening={isListening}
                                 onClick={handleToggleVoice}
@@ -284,7 +277,7 @@ const AsTextarea = ({
                     </Tooltip>
                 )}
                 <Tooltip>
-                    <TooltipTrigger>
+                    <TooltipTrigger asChild>
                         <InputGroupButton
                             variant="ghost"
                             className="rounded-full"
@@ -311,7 +304,7 @@ const AsTextarea = ({
                     <TooltipContent>{tooltips.attachButton}</TooltipContent>
                 </Tooltip>
                 <Tooltip>
-                    <TooltipTrigger>
+                    <TooltipTrigger asChild>
                         <InputGroupButton
                             variant="default"
                             className="rounded-full"

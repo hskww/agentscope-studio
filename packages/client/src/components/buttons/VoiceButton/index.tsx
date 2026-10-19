@@ -2,21 +2,26 @@ import React from 'react';
 import { Mic, Square } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export interface VoiceButtonProps {
+// Native button props are forwarded, so that a wrapping Radix trigger
+// (`<TooltipTrigger asChild>` / `<DialogTrigger asChild>` ...) can hand its
+// event handlers and ref down to the real <button>.
+export type VoiceButtonProps = Omit<
+    React.ComponentProps<'button'>,
+    'onClick' | 'size'
+> & {
     isListening: boolean;
-    onClick: () => void;
-    disabled?: boolean;
+    onClick?: () => void;
     size?: 'sm' | 'md' | 'lg';
-    className?: string;
-}
+};
 
-const VoiceButton: React.FC<VoiceButtonProps> = ({
+const VoiceButton = ({
     isListening,
     onClick,
     disabled = false,
     size = 'sm',
     className = '',
-}) => {
+    ...props
+}: VoiceButtonProps) => {
     const sizeClasses = {
         sm: 'w-6 h-6',
         md: 'w-12 h-12',
@@ -33,6 +38,7 @@ const VoiceButton: React.FC<VoiceButtonProps> = ({
         <button
             onClick={onClick}
             disabled={disabled}
+            {...props}
             className={cn(
                 'relative rounded-full flex items-center justify-center transition-all duration-300 ease-in-out',
                 sizeClasses[size],

@@ -31,7 +31,14 @@ def get_args() -> Namespace:
     )
     parser.add_argument(
         "--llmProvider",
-        choices=["dashscope", "openai", "anthropic", "gemini", "ollama"],
+        choices=[
+            "dashscope",
+            "openai",
+            "anthropic",
+            "gemini",
+            "ollama",
+            "deepseek",
+        ],
         required=True,
     )
     parser.add_argument(

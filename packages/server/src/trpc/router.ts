@@ -298,8 +298,11 @@ export const appRouter = t.router({
                     }
                 })
                 .catch((error) => {
-                    console.error(error);
-                    throw error;
+                    // Only log: this promise is not awaited, so re-throwing here
+                    // would surface as an unhandled rejection and kill Studio.
+                    console.error(
+                        `Failed to broadcast reply ${replyId}: ${error}`,
+                    );
                 });
 
             // Broadcast speech data if provided (for real-time audio playback)
@@ -357,15 +360,22 @@ export const appRouter = t.router({
             }),
         )
         .mutation(async ({ input }) => {
-            FridayAppMessageDao.finishReply(input.replyId)
-                .then((reply) => {
-                    // Broadcast to all the clients in the FridayAppRoom
-                    SocketManager.broadcastReplyToFridayAppRoom(reply);
-                })
-                .catch((error) => {
-                    console.error(error);
-                    throw error;
+            try {
+                const reply = await FridayAppMessageDao.finishReply(
+                    input.replyId,
+                );
+                // Broadcast to all the clients in the FridayAppRoom
+                SocketManager.broadcastReplyToFridayAppRoom(reply);
+            } catch (error) {
+                // Report the failure through tRPC instead of re-throwing from a
+                // floating promise: an unhandled rejection would terminate the
+                // whole Studio process and take the websocket down with it.
+                console.error(error);
+                throw new TRPCError({
+                    code: 'NOT_FOUND',
+                    message: `Failed to finish the reply: ${error}`,
                 });
+            }
         }),
 
     clientGetFridayConfig: t.procedure.query(async () => {

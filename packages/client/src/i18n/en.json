@@ -137,7 +137,10 @@
             "value-name": "Value Name",
             "missing-value-name": "Missing value name",
             "check-only-number": "Only numbers can be entered",
-            "add-form-list-btn": "Add keyword argument"
+            "add-form-list-btn": "Add keyword argument",
+            "java-env": "Absolute path to your Java executable (JDK 17+), e.g. /usr/bin/java",
+            "runtime": "Select the Friday implementation to run: Python (agentscope 1.x) or Java (agentscope-java 2.0)",
+            "main-script-path": "Path of the Friday entry script. Leave it empty to use the default one. For the Java runtime, fill in the path of friday.jar"
         }
     },
     "hint": {
@@ -176,7 +179,8 @@
             "success-install-requirements": "Requirements installed successfully.",
             "success-save-config": "Configuration saved successfully.",
             "info-install-requirements": "Installing Python requirements for Friday, please wait ...",
-            "info-save-config": "Save the configuration for Friday, please wait ..."
+            "info-save-config": "Save the configuration for Friday, please wait ...",
+            "info-check-runtime": "Checking the Friday runtime, please wait ..."
         }
     },
     "notification": {

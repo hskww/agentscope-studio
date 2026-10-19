@@ -4,15 +4,16 @@ import { ResponseBody } from '../types';
 import path from 'path';
 import { runPythonScript } from '../../../server/src/trpc/socket';
 import { execSync } from 'child_process';
+import {
+    DEFAULT_FRIDAY_RUNTIME,
+    FridayConfig,
+    FridayRuntime,
+} from './friday-common';
 
-export interface FridayConfig {
-    pythonEnv: string;
-    mainScriptPath?: string;
-    llmProvider: string;
-    modelName: string;
-    writePermission: boolean;
-    baseUrl?: string;
-}
+// Browser-safe contracts shared with the client. Client code should import
+// them from './friday-common' directly, since this module pulls in Node.js
+// dependencies that cannot be bundled for the browser.
+export * from './friday-common';
 
 export class FridayConfigManager {
     private static instance: FridayConfigManager;
@@ -135,12 +136,87 @@ export class FridayConfigManager {
         }
     }
 
-    async installRequirements(pythonEnv: string) {
+    /**
+     * Verify the runtime environment of the selected Friday implementation.
+     *
+     * @param runtime 'python' or 'java'
+     * @param env     the python interpreter path, or the java executable path
+     */
+    verifyRuntimeEnv(runtime: FridayRuntime, env: string) {
+        return runtime === 'java'
+            ? this.verifyJavaEnv(env)
+            : this.verifyPythonEnv(env);
+    }
+
+    /**
+     * Verify the java executable used by the java runtime.
+     * AgentScope Java requires JDK 17 or higher.
+     */
+    verifyJavaEnv(javaEnv: string) {
+        const command = (javaEnv ?? '').trim() || 'java';
+
+        try {
+            const cmd = process.platform === 'win32' ? `"${command}"` : command;
+            const combined = execSync(`${cmd} -version 2>&1`, {
+                encoding: 'utf8',
+            }).toString();
+
+            // Both `java -version` and `javac -version` print something like
+            // openjdk version "17.0.9" 2023-10-17
+            const versionMatch = combined.match(/version "(\d+)(?:\.(\d+))?/);
+            if (!versionMatch) {
+                return {
+                    success: false,
+                    message: `Failed to get the Java version from: ${command}`,
+                } as ResponseBody;
+            }
+            const major = parseInt(versionMatch[1], 10);
+            // Java 1.8 and older report versions like "1.8.0_382".
+            const effectiveMajor =
+                major === 1 ? parseInt(versionMatch[2], 10) : major;
+            if (Number.isNaN(effectiveMajor) || effectiveMajor < 17) {
+                return {
+                    success: false,
+                    message: `Java version must be 17 or higher, got ${combined.split('\n')[0]}.`,
+                } as ResponseBody;
+            }
+            return {
+                success: true,
+                message: 'Configuration is valid.',
+            } as ResponseBody;
+        } catch (error) {
+            return {
+                success: false,
+                message: `Not a valid Java environment: ${error}`,
+            } as ResponseBody;
+        }
+    }
+
+    async installRequirements(
+        pythonEnv: string,
+        runtime: FridayRuntime = DEFAULT_FRIDAY_RUNTIME,
+    ) {
+        // The java implementation ships as a self-contained fat jar, there is
+        // nothing to install at runtime.
+        if (runtime === 'java') {
+            return {
+                success: true,
+                message: 'The Java runtime needs no extra installation.',
+            } as ResponseBody;
+        }
+
+        // Pin agentscope to 1.x: Friday's Python code uses the 1.x API
+        // (e.g. `agentscope.agent.ReActAgent` + `formatter`), which was
+        // removed in agentscope 2.x.
+        // Pin cryptography < 49: 49+ only ships arm64 wheels on macOS, so
+        // Intel Macs would fall back to a source build that requires Rust
+        // and OpenSSL.
         const res = await runPythonScript(pythonEnv, [
             '-m',
             'pip',
             'install',
-            'agentscope[full]',
+            'agentscope[full]==1.0.21',
+            'cryptography<49',
         ]);
         console.debug('Install requirements:', res);
         if (res.success) {
@@ -156,7 +232,30 @@ export class FridayConfigManager {
         }
     }
 
-    getDefaultMainScriptPath() {
+    /**
+     * The default entry script of Friday.
+     *
+     * - python: `app/friday/main.py`
+     * - java:   `app/friday_java/friday.jar` in production (copied by
+     *           `npm run build:java`), or the maven output
+     *           `app/friday_java/target/friday.jar` in development.
+     */
+    getDefaultMainScriptPath(runtime: FridayRuntime = DEFAULT_FRIDAY_RUNTIME) {
+        if (runtime === 'java') {
+            if (process.env.NODE_ENV === 'production') {
+                // dist/app/friday_java/friday.jar
+                return path.join(
+                    __dirname,
+                    '../../../app/friday_java/friday.jar',
+                );
+            }
+            // packages/app/friday_java/target/friday.jar
+            return path.join(
+                __dirname,
+                '../../../app/friday_java/target/friday.jar',
+            );
+        }
+
         if (process.env.NODE_ENV === 'production') {
             // In production, the structure is:
             // dist/
@@ -178,5 +277,33 @@ export class FridayConfigManager {
         //     friday/
         //       main.py
         return path.join(__dirname, '../../../app/friday/main.py');
+    }
+
+    /**
+     * Build the command that launches Friday.
+     *
+     * @returns `[command, ...args]`, ready to be handed to `spawn`.
+     */
+    getLaunchCommand(
+        config: FridayConfig,
+        scriptArgs: string[],
+    ): { command: string; args: string[] } {
+        const runtime: FridayRuntime = config.runtime ?? DEFAULT_FRIDAY_RUNTIME;
+
+        if (runtime === 'java') {
+            const jarPath =
+                config.mainScriptPath || this.getDefaultMainScriptPath('java');
+            return {
+                command: (config.javaEnv ?? '').trim() || 'java',
+                args: ['-jar', jarPath, ...scriptArgs],
+            };
+        }
+
+        const scriptPath =
+            config.mainScriptPath || this.getDefaultMainScriptPath('python');
+        return {
+            command: (config.pythonEnv ?? '').trim() || 'python3',
+            args: [scriptPath, ...scriptArgs],
+        };
     }
 }

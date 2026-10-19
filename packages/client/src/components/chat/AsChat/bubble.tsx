@@ -1,5 +1,6 @@
 import { memo, ReactNode, useMemo } from 'react';
 import { ContentType, Reply, TextBlock } from '@shared/types';
+import { ContentBlock } from '@shared/types/messageForm';
 import BubbleBlock, {
     CollapsibleBlockDiv,
 } from '@/components/chat/bubbles/BubbleBlock';
@@ -42,10 +43,23 @@ const AsBubble = ({
     const avatarRight =
         userAvatarRight && reply.replyRole.toLowerCase() === 'user';
 
-    const renderBlock = (content: ContentType, markdown: boolean) => {
+    // Content blocks are appended while streaming, so the tool block id (when
+    // available) is preferred over the position to keep the reconciler stable.
+    // `keyPrefix` scopes the keys to the owning message.
+    const blockKey = (keyPrefix: string, block: ContentBlock, index: number) =>
+        'id' in block
+            ? `${keyPrefix}-${block.id}`
+            : `${keyPrefix}-${block.type}-${index}`;
+
+    const renderBlock = (
+        content: ContentType,
+        markdown: boolean,
+        keyPrefix = 'content',
+    ) => {
         if (typeof content === 'string') {
             return (
                 <BubbleBlock
+                    key={`${keyPrefix}-text`}
                     block={
                         {
                             type: 'text',
@@ -56,8 +70,12 @@ const AsBubble = ({
                 />
             );
         }
-        return content.map((block) => (
-            <BubbleBlock block={block} markdown={markdown} />
+        return content.map((block, index) => (
+            <BubbleBlock
+                key={blockKey(keyPrefix, block, index)}
+                block={block}
+                markdown={markdown}
+            />
         ));
     };
 
@@ -93,11 +111,13 @@ const AsBubble = ({
                             ) {
                                 return (
                                     <CollapsibleBlockDiv
+                                        key={`${msg.id}-hint`}
                                         title={t('chat.title-hint-message')}
                                         icon={<CircleAlertIcon size={12} />}
                                         content={renderBlock(
                                             msg.content,
                                             markdown,
+                                            msg.id,
                                         )}
                                         tooltip={t(
                                             'tooltip.header.hint-message',
@@ -105,7 +125,7 @@ const AsBubble = ({
                                     />
                                 );
                             }
-                            return renderBlock(msg.content, markdown);
+                            return renderBlock(msg.content, markdown, msg.id);
                         })}
                     </div>
                 </div>

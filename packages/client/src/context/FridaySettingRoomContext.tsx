@@ -8,15 +8,25 @@ import {
 import { useLocation, useNavigate } from 'react-router-dom';
 import { RouterPath } from '@/pages/RouterPath.ts';
 import { useSocket } from '@/context/SocketContext.tsx';
-import { FridayConfig } from '@shared/config/friday.ts';
+import {
+    DEFAULT_FRIDAY_RUNTIME,
+    FridayConfig,
+    FridayRuntime,
+} from '@shared/config/friday-common.ts';
 import { ResponseBody, SocketEvents } from '@shared/types';
 
 interface FridaySettingRoomContextType {
     saveFridayConfig: (config: FridayConfig) => Promise<ResponseBody>;
-    installFridayRequirements: (pythonEnv: string) => Promise<ResponseBody>;
+    installFridayRequirements: (payload: {
+        runtime?: FridayRuntime;
+        pythonEnv?: string;
+    }) => Promise<ResponseBody>;
     loadingConfig: boolean;
     fridayConfig?: FridayConfig | null;
-    verifyPythonEnv: (pythonEnv: string) => Promise<ResponseBody>;
+    verifyRuntimeEnv: (
+        runtime: FridayRuntime,
+        env: string,
+    ) => Promise<ResponseBody>;
 }
 
 const FridaySettingRoomContext =
@@ -84,14 +94,18 @@ export function FridaySettingRoomContextProvider({ children }: Props) {
         });
     };
 
-    const installFridayRequirements = async (
-        pythonEnv: string,
-    ): Promise<ResponseBody> => {
+    const installFridayRequirements = async (payload: {
+        runtime?: FridayRuntime;
+        pythonEnv?: string;
+    }): Promise<ResponseBody> => {
         return new Promise((resolve, reject) => {
             if (socket) {
                 socket.emit(
                     SocketEvents.client.installFridayRequirements,
-                    pythonEnv,
+                    {
+                        runtime: payload.runtime ?? DEFAULT_FRIDAY_RUNTIME,
+                        pythonEnv: payload.pythonEnv ?? '',
+                    },
                     (response: ResponseBody) => {
                         resolve(response);
                     },
@@ -102,7 +116,10 @@ export function FridaySettingRoomContextProvider({ children }: Props) {
         });
     };
 
-    const verifyPythonEnv = (pythonEnv: string): Promise<ResponseBody> => {
+    const verifyRuntimeEnv = (
+        runtime: FridayRuntime,
+        env: string,
+    ): Promise<ResponseBody> => {
         return new Promise((resolve, reject) => {
             if (!socket) {
                 reject(new Error('Missing connection to the server'));
@@ -110,7 +127,7 @@ export function FridaySettingRoomContextProvider({ children }: Props) {
             }
             socket.emit(
                 SocketEvents.client.verifyFridayConfig,
-                pythonEnv,
+                { runtime, env },
                 (response: ResponseBody) => {
                     resolve(response);
                 },
@@ -125,7 +142,7 @@ export function FridaySettingRoomContextProvider({ children }: Props) {
                 installFridayRequirements,
                 loadingConfig,
                 fridayConfig,
-                verifyPythonEnv,
+                verifyRuntimeEnv,
             }}
         >
             {children}
